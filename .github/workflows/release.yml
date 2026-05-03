@@ -1,55 +1,35 @@
-version: 2
+name: Release
 
-before:
-  hooks:
-    - go mod tidy
+on:
+  push:
+    tags:
+      - 'v*'
 
-builds:
-  - id: cortex
-    main: ./cmd/cortex
-    binary: cortex
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - windows
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-      - -X github.com/hamza-hafeez82/cortex/internal/version.Version={{.Version}}
-      - -X github.com/hamza-hafeez82/cortex/internal/version.Commit={{.Commit}}
-      - -X github.com/hamza-hafeez82/cortex/internal/version.Date={{.Date}}
+permissions:
+  contents: write
 
-archives:
-  - id: cortex
-    name_template: "cortex_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        format: zip
-    files:
-      - README.md
-      - LICENSE
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
 
-checksum:
-  name_template: "checksums.txt"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - Merge pull request
-      - Merge branch
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
 
-release:
-  github:
-    owner: hamza-hafeez82
-    name: cortex
-  draft: false
-  prerelease: auto
-  name_template: "Cortex {{.Version}}"
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

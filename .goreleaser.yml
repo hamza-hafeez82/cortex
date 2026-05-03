@@ -1,0 +1,55 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cortex
+    main: ./cmd/cortex
+    binary: cortex
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/hamza-hafeez82/cortex/internal/version.Version={{.Version}}
+      - -X github.com/hamza-hafeez82/cortex/internal/version.Commit={{.Commit}}
+      - -X github.com/hamza-hafeez82/cortex/internal/version.Date={{.Date}}
+
+archives:
+  - id: cortex
+    name_template: "cortex_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: hamza-hafeez82
+    name: cortex
+  draft: false
+  prerelease: auto
+  name_template: "Cortex {{.Version}}"
