@@ -1,5 +1,6 @@
 # Binaries
-cortex
+/cortex
+/dist/cortex
 cortex.exe
 *.out
 *.test
