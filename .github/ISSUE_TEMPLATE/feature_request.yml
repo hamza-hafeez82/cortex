@@ -1,0 +1,54 @@
+name: Feature Request
+description: Suggest a new detector, command, or capability
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea that would make Cortex better? We'd love to hear it.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New security detector (CX-SEC)
+        - New architecture detector (CX-ARCH)
+        - New dependency detector (CX-DEP)
+        - New CLI command
+        - AI / explanation improvements
+        - TUI / output improvements
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What issue or gap are you trying to address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work? What should the output look like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about?
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to submit a PR for this
