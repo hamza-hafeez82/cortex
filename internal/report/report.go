@@ -1,0 +1,188 @@
+package report
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/hamza-hafeez82/cortex/pkg/detector"
+)
+
+// ScanReport holds the complete output of a cortex scan.
+type ScanReport struct {
+	RepoPath      string           `json:"repo_path"`
+	TotalFiles    int              `json:"total_files"`
+	TotalLines    int              `json:"total_lines"`
+	Issues        []detector.Issue `json:"issues"`
+	SecurityCount int              `json:"security_count"`
+	ArchCount     int              `json:"arch_count"`
+	DepCount      int              `json:"dep_count"`
+}
+
+// NewReport builds a ScanReport from raw issues.
+func NewReport(repoPath string, totalFiles, totalLines int, issues []detector.Issue) *ScanReport {
+	r := &ScanReport{
+		RepoPath:   repoPath,
+		TotalFiles: totalFiles,
+		TotalLines: totalLines,
+		Issues:     issues,
+	}
+	for _, issue := range issues {
+		switch issue.Category {
+		case detector.CategorySecurity:
+			r.SecurityCount++
+		case detector.CategoryArchitecture:
+			r.ArchCount++
+		case detector.CategoryDependency:
+			r.DepCount++
+		}
+	}
+	return r
+}
+
+// Styles for terminal output.
+var (
+	styleCritical = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF4444"))
+	styleHigh     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF8C00"))
+	styleMedium   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD700"))
+	styleLow      = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	styleInfo     = lipgloss.NewStyle().Foreground(lipgloss.Color("#4FC3F7"))
+	styleCode     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A8FF78"))
+	styleDim      = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	styleBold     = lipgloss.NewStyle().Bold(true)
+	styleHeader   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00D4FF"))
+)
+
+// RenderTerminal returns a formatted terminal report string.
+func (r *ScanReport) RenderTerminal() string {
+	var sb strings.Builder
+
+	sb.WriteString("\n")
+	sb.WriteString(styleHeader.Render("  ══ Cortex Scan Report ══") + "\n\n")
+
+	if len(r.Issues) == 0 {
+		sb.WriteString("  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF88")).Bold(true).Render("✓ No issues found") + "\n")
+		sb.WriteString(styleDim.Render(fmt.Sprintf("  Scanned %d files · %d lines", r.TotalFiles, r.TotalLines)) + "\n")
+		return sb.String()
+	}
+
+	// Issues table
+	for _, issue := range r.Issues {
+		sevStyle := severityStyle(issue.Severity)
+		sev := sevStyle.Render(fmt.Sprintf("%-8s", strings.ToUpper(issue.Severity)))
+
+		code := styleCode.Render(issue.Code)
+
+		location := ""
+		if issue.Line > 0 {
+			location = styleDim.Render(fmt.Sprintf("%s:%d", issue.File, issue.Line))
+		} else {
+			location = styleDim.Render(issue.File)
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n", sev, code, issue.Title))
+		sb.WriteString(fmt.Sprintf("           %s\n", location))
+		if issue.Snippet != "" {
+			snippet := issue.Snippet
+			if len(snippet) > 72 {
+				snippet = snippet[:69] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("           %s\n", styleDim.Render(snippet)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Summary
+	sb.WriteString(styleDim.Render(strings.Repeat("─", 60)) + "\n")
+	sb.WriteString(fmt.Sprintf("  %s  %s found across %d files · %d lines scanned\n\n",
+		styleBold.Render(fmt.Sprintf("%d issues", len(r.Issues))),
+		issueBreakdown(r),
+		r.TotalFiles,
+		r.TotalLines,
+	))
+	sb.WriteString(styleDim.Render("  Run cortex explain <CODE> for an AI-powered explanation") + "\n")
+	sb.WriteString(styleDim.Render("  Run cortex report --format json to export") + "\n\n")
+
+	return sb.String()
+}
+
+// RenderJSON returns a JSON-encoded report.
+func (r *ScanReport) RenderJSON() (string, error) {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// RenderMarkdown returns a Markdown-formatted report.
+func (r *ScanReport) RenderMarkdown() string {
+	var sb strings.Builder
+
+	sb.WriteString("# Cortex Scan Report\n\n")
+	sb.WriteString(fmt.Sprintf("**Repo:** `%s`  \n", r.RepoPath))
+	sb.WriteString(fmt.Sprintf("**Files scanned:** %d  \n", r.TotalFiles))
+	sb.WriteString(fmt.Sprintf("**Lines scanned:** %d  \n", r.TotalLines))
+	sb.WriteString(fmt.Sprintf("**Issues found:** %d\n\n", len(r.Issues)))
+
+	if len(r.Issues) == 0 {
+		sb.WriteString("✅ No issues found.\n")
+		return sb.String()
+	}
+
+	sb.WriteString("## Issues\n\n")
+	sb.WriteString("| Severity | Code | Title | File | Line |\n")
+	sb.WriteString("|----------|------|-------|------|------|\n")
+
+	for _, issue := range r.Issues {
+		line := "-"
+		if issue.Line > 0 {
+			line = fmt.Sprintf("%d", issue.Line)
+		}
+		sb.WriteString(fmt.Sprintf("| %s | `%s` | %s | `%s` | %s |\n",
+			strings.ToUpper(issue.Severity),
+			issue.Code,
+			issue.Title,
+			issue.File,
+			line,
+		))
+	}
+
+	sb.WriteString("\n---\n")
+	sb.WriteString("*Generated by [Cortex](https://github.com/hamza-hafeez82/cortex)*\n")
+
+	return sb.String()
+}
+
+func severityStyle(sev string) lipgloss.Style {
+	switch sev {
+	case detector.SeverityCritical:
+		return styleCritical
+	case detector.SeverityHigh:
+		return styleHigh
+	case detector.SeverityMedium:
+		return styleMedium
+	case detector.SeverityLow:
+		return styleLow
+	default:
+		return styleInfo
+	}
+}
+
+func issueBreakdown(r *ScanReport) string {
+	parts := []string{}
+	if r.SecurityCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d security", r.SecurityCount))
+	}
+	if r.DepCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d dependency", r.DepCount))
+	}
+	if r.ArchCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d architecture", r.ArchCount))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
