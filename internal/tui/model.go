@@ -27,6 +27,7 @@ type StageUpdate struct {
 	Stage  Stage
 	Issues []detector.Issue
 	Done   bool
+	Err    error
 }
 
 // Styles
@@ -57,6 +58,7 @@ type Model struct {
 	startTime    time.Time
 	updateChan   chan StageUpdate
 	done         bool
+	err          error
 }
 
 // NewModel creates a scan TUI model.
@@ -124,6 +126,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.archDone = true
 			m.stage = StageDone
 			m.done = true
+		}
+
+		if msg.Err != nil {
+			m.err = msg.Err
+			m.done = true
+			return m, tea.Quit
 		}
 
 		if msg.Done {
@@ -212,12 +220,19 @@ func (m Model) View() string {
 
 	if m.done {
 		elapsed := time.Since(m.startTime).Round(time.Millisecond)
-		total := m.secCount + m.depCount + m.archCount
-		sb.WriteString(fmt.Sprintf("  %s  %s  %s\n\n",
-			styleDone.Render("✓ Scan complete"),
-			styleDimTUI.Render(fmt.Sprintf("%d issues", total)),
-			styleDimTUI.Render(fmt.Sprintf("(%s)", elapsed)),
-		))
+		if m.err != nil {
+			sb.WriteString(fmt.Sprintf("  %s  %s\n\n",
+				styleCrit.Render("✖ Scan failed"),
+				styleDimTUI.Render(m.err.Error()),
+			))
+		} else {
+			total := m.secCount + m.depCount + m.archCount
+			sb.WriteString(fmt.Sprintf("  %s  %s  %s\n\n",
+				styleDone.Render("✓ Scan complete"),
+				styleDimTUI.Render(fmt.Sprintf("%d issues", total)),
+				styleDimTUI.Render(fmt.Sprintf("(%s)", elapsed)),
+			))
+		}
 	}
 
 	return sb.String()

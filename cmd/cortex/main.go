@@ -124,21 +124,36 @@ func runScan(target, minSeverity string, jsonOutput bool, format string, noTUI b
 
 	if noTUI {
 		// Plain mode — run stages synchronously with simple progress output
-		allIssues = runPlain(repo, updateChan, noTUI)
+		var err error
+		allIssues, err = runPlain(repo, updateChan, noTUI)
+		if err != nil {
+			return err
+		}
 	} else {
 		// TUI mode — run stages in background, TUI reads updates
 		tuiModel := tui.NewModel(target, repo.TotalFiles, updateChan)
 
-		issuesChan := make(chan []detector.Issue, 1)
+		issuesChan := make(chan struct {
+			issues []detector.Issue
+			err    error
+		}, 1)
 		go func() {
-			issuesChan <- runStages(repo, updateChan)
+			issues, err := runStages(repo, updateChan)
+			issuesChan <- struct {
+				issues []detector.Issue
+				err    error
+			}{issues, err}
 		}()
 
 		p := tea.NewProgram(tuiModel)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("TUI error: %w", err)
 		}
-		allIssues = <-issuesChan
+		res := <-issuesChan
+		if res.err != nil {
+			return res.err
+		}
+		allIssues = res.issues
 	}
 
 	// ── Filter by severity ────────────────────────────────────────────────
@@ -171,13 +186,16 @@ func runScan(target, minSeverity string, jsonOutput bool, format string, noTUI b
 }
 
 // runStages executes all three stages and sends updates to the TUI channel.
-func runStages(repo *walker.RepoMap, updateChan chan tui.StageUpdate) []detector.Issue {
+func runStages(repo *walker.RepoMap, updateChan chan tui.StageUpdate) ([]detector.Issue, error) {
 	var allIssues []detector.Issue
 	ctx := &detector.ScanContext{Repo: repo}
 
 	// Stage 1: Recon
 	reconRunner := recon.NewRunner()
-	reconRunner.Run(repo) // recon result used by later stages implicitly
+	if _, err := reconRunner.Run(repo); err != nil {
+		updateChan <- tui.StageUpdate{Err: err}
+		return nil, err
+	}
 	updateChan <- tui.StageUpdate{Stage: tui.StageRecon, Issues: nil}
 
 	// Stage 2: Security
@@ -192,17 +210,19 @@ func runStages(repo *walker.RepoMap, updateChan chan tui.StageUpdate) []detector
 	allIssues = append(allIssues, archIssues...)
 	updateChan <- tui.StageUpdate{Stage: tui.StageArchitecture, Issues: archIssues, Done: true}
 
-	return allIssues
+	return allIssues, nil
 }
 
-func runPlain(repo *walker.RepoMap, _ chan tui.StageUpdate, _ bool) []detector.Issue {
+func runPlain(repo *walker.RepoMap, _ chan tui.StageUpdate, _ bool) ([]detector.Issue, error) {
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 	tick := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF88")).Bold(true)
 	ctx := &detector.ScanContext{Repo: repo}
 
 	fmt.Print(dim.Render("  Stage 1  Reconnaissance..."))
 	reconRunner := recon.NewRunner()
-	reconRunner.Run(repo)
+	if _, err := reconRunner.Run(repo); err != nil {
+		return nil, err
+	}
 	fmt.Println("  " + tick.Render("done"))
 
 	fmt.Print(dim.Render("  Stage 2  Security scanning..."))
@@ -215,7 +235,7 @@ func runPlain(repo *walker.RepoMap, _ chan tui.StageUpdate, _ bool) []detector.I
 	archIssues := archRunner.Run(ctx)
 	fmt.Printf("  %s  %s\n\n", tick.Render("done"), dim.Render(fmt.Sprintf("%d issues", len(archIssues))))
 
-	return append(secIssues, archIssues...)
+	return append(secIssues, archIssues...), nil
 }
 
 // ── cortex explain ────────────────────────────────────────────────────────────
