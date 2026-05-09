@@ -10,7 +10,10 @@ import (
 
 // ConfigPath returns the path to the Cortex config file.
 func ConfigPath() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".cortex/config.yaml"
+	}
 	return filepath.Join(home, ".cortex", "config.yaml")
 }
 

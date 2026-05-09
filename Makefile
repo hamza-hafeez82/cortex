@@ -1,26 +1,62 @@
 BINARY_NAME=cortex
-GO_FILES=$(shell find . -name "*.go")
+BUILD_DIR=dist
+MAIN_PATH=./cmd/cortex
 
-.PHONY: all build run clean test tidy install
+.PHONY: build run test lint clean install fmt vet tidy
 
-all: build
+## build: compile the binary for current platform
+build:
+	@echo "→ Building $(BINARY_NAME)..."
+	@go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+	@echo "✓ Built: $(BUILD_DIR)/$(BINARY_NAME)"
 
-build: $(BINARY_NAME)
-
-$(BINARY_NAME): $(GO_FILES)
-	go build -o $(BINARY_NAME) ./cmd/cortex
-
+## run: build and run with default args
 run: build
-	./$(BINARY_NAME)
+	@./$(BUILD_DIR)/$(BINARY_NAME)
 
-test:
-	go test -v ./...
-
-clean:
-	rm -f $(BINARY_NAME)
-
-tidy:
-	go mod tidy
-
+## install: install binary to GOPATH/bin
 install:
-	go install ./cmd/cortex
+	@echo "→ Installing $(BINARY_NAME)..."
+	@go install $(MAIN_PATH)
+	@echo "✓ Installed to $(shell go env GOPATH)/bin/$(BINARY_NAME)"
+
+## test: run all tests with race detector
+test:
+	@echo "→ Running tests..."
+	@go test -race -v ./...
+
+## test-cover: run tests and show coverage
+test-cover:
+	@go test -race -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "✓ Coverage report: coverage.html"
+
+## lint: run golangci-lint
+lint:
+	@echo "→ Linting..."
+	@golangci-lint run ./...
+
+## fmt: format all Go files
+fmt:
+	@go fmt ./...
+	@echo "✓ Formatted"
+
+## vet: run go vet
+vet:
+	@go vet ./...
+	@echo "✓ Vet passed"
+
+## tidy: tidy and verify go modules
+tidy:
+	@go mod tidy
+	@go mod verify
+	@echo "✓ Modules tidy"
+
+## clean: remove build artifacts
+clean:
+	@rm -rf $(BUILD_DIR) coverage.out coverage.html
+	@echo "✓ Cleaned"
+
+## help: list all available targets
+help:
+	@grep -E '^##' Makefile | sed 's/## //'

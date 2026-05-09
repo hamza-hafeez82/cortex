@@ -24,6 +24,7 @@ import (
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -128,14 +129,16 @@ func runScan(target, minSeverity string, jsonOutput bool, format string, noTUI b
 		// TUI mode — run stages in background, TUI reads updates
 		tuiModel := tui.NewModel(target, repo.TotalFiles, updateChan)
 
+		issuesChan := make(chan []detector.Issue, 1)
 		go func() {
-			allIssues = runStages(repo, updateChan)
+			issuesChan <- runStages(repo, updateChan)
 		}()
 
 		p := tea.NewProgram(tuiModel)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("TUI error: %w", err)
 		}
+		allIssues = <-issuesChan
 	}
 
 	// ── Filter by severity ────────────────────────────────────────────────
@@ -440,11 +443,4 @@ func filterBySeverity(issues []detector.Issue, minSev string) []detector.Issue {
 		}
 	}
 	return filtered
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
